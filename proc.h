@@ -66,11 +66,6 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
-
-  // Assignment2
-  uint quanta;                 // Quanta time
-  uint placeInQ;               // order of this proc in q
-  uint priority;               // Priority
 };
 
 // Process memory is laid out contiguously, low addresses first:

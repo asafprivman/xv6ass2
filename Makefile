@@ -1,7 +1,7 @@
-# add for the scheduler flag
 ifndef SCHEDFLAG
 SCHEDFLAG := DEFAULT
 endif
+
 
 OBJS = \
 	bio.o\

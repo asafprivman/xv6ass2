@@ -11,5 +11,4 @@
 #define LOGSIZE      10  // max data sectors in on-disk log
 
 //Assignment 2
-#define QUANTA		 5
-
+#define QUANTA		  5

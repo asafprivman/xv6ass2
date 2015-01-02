@@ -8,9 +8,6 @@
 #include "spinlock.h"
 #include "signal.h"
 
-uint firstInQ = 0;
-uint lastInQ  = 0;
-
 struct {
   struct spinlock lock;
   struct proc proc[NPROC];
@@ -51,8 +48,6 @@ allocproc(void)
 found:
   p->state = EMBRYO;
   p->pid = nextpid++;
-
-  p->placeInQ = lastInQ++;
   release(&ptable.lock);
 
   // Allocate kernel stack.
@@ -61,11 +56,11 @@ found:
     return 0;
   }
   sp = p->kstack + KSTACKSIZE;
-
+  
   // Leave room for trap frame.
   sp -= sizeof *p->tf;
   p->tf = (struct trapframe*)sp;
-
+  
   // Set up new context to start executing at forkret,
   // which returns to trapret.
   sp -= 4;
@@ -86,7 +81,7 @@ userinit(void)
 {
   struct proc *p;
   extern char _binary_initcode_start[], _binary_initcode_size[];
-
+  
   p = allocproc();
   initproc = p;
   if((p->pgdir = setupkvm(kalloc)) == 0)
@@ -114,7 +109,7 @@ int
 growproc(int n)
 {
   uint sz;
-
+  
   sz = proc->sz;
   if(n > 0){
     if((sz = allocuvm(proc->pgdir, sz, sz + n)) == 0)
@@ -159,7 +154,7 @@ fork(void)
     if(proc->ofile[i])
       np->ofile[i] = filedup(proc->ofile[i]);
   np->cwd = idup(proc->cwd);
-
+ 
   pid = np->pid;
   np->state = RUNNABLE;
   safestrcpy(np->name, proc->name, sizeof(proc->name));
@@ -292,20 +287,10 @@ scheduler(void)
       if(p->state != RUNNABLE)
         continue;
 
-#ifdef FRR
-      if (p->placeInQ != firstInQ) {
-    	  continue;
-      } else {
-    	  p->quanta = 1;
-      }
-#elif DEFAULT
-      cprintf("DEFAULT!");
-#endif
       // Switch to chosen process.  It is the process's job
       // to release ptable.lock and then reacquire it
       // before jumping back to us.
       proc = p;
-      cprintf("process pid is %d\n",proc->pid);
       switchuvm(p);
       p->state = RUNNING;
       swtch(&cpu->scheduler, proc->context);
@@ -313,10 +298,6 @@ scheduler(void)
 
       // Process is done running for now.
       // It should have changed its p->state before coming back.
-      if (proc->state == RUNNABLE) {
-    	  firstInQ++;
-    	  proc->placeInQ = lastInQ++;
-      }
       proc = 0;
     }
     release(&ptable.lock);
@@ -350,7 +331,6 @@ yield(void)
 {
   acquire(&ptable.lock);  //DOC: yieldlock
   proc->state = RUNNABLE;
-  proc->placeInQ = lastInQ++;
   sched();
   release(&ptable.lock);
 }
@@ -366,12 +346,12 @@ forkret(void)
 
   if (first) {
     // Some initialization functions must be run in the context
-    // of a regular process (e.g., they call sleep), and thus cannot
+    // of a regular process (e.g., they call sleep), and thus cannot 
     // be run from main().
     first = 0;
     initlog();
   }
-
+  
   // Return to "caller", actually trapret (see allocproc).
 }
 
@@ -423,7 +403,6 @@ wakeup1(void *chan)
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
     if(p->state == SLEEPING && p->chan == chan)
       p->state = RUNNABLE;
-  	  //cprintf("wakeup1: proc %d became runnable\n",proc->pid);
 }
 
 // Wake up all processes sleeping on chan.
@@ -477,7 +456,7 @@ procdump(void)
   struct proc *p;
   char *state;
   uint pc[10];
-
+  
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
     if(p->state == UNUSED)
       continue;
