@@ -21,7 +21,7 @@ Index: syscall.c
  [SYS_close]   sys_close,
 +[SYS_addpath]  sys_addpath,
 +[SYS_wait2] sys_wait2,
-+[SYS_getPriority] sys_getPriority,
++[SYS_getPriority] sys_getPriority, 
  };
  
  void

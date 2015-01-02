@@ -1,6 +1,12 @@
 struct stat;
 
 // system calls
+
+// Assignment2
+int wait2(int *, int *,int *);
+int getPriority(int*);
+// ***********
+
 int fork(void);
 int exit(void) __attribute__((noreturn));
 int wait(void);

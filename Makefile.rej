@@ -1,0 +1,53 @@
+--- Makefile	(working copy)
++++ Makefile	(revision 3)
+@@ -67,9 +67,6 @@
+ 	echo "***" 1>&2; exit 1)
+ endif
+ 
+-#!
+-SCHEDFLAG = DEFAULT
+-
+ CC = $(TOOLPREFIX)gcc
+ AS = $(TOOLPREFIX)gas
+ LD = $(TOOLPREFIX)ld
+@@ -82,10 +79,6 @@
+ # FreeBSD ld wants ``elf_i386_fbsd''
+ LDFLAGS += -m $(shell $(LD) -V | grep elf_i386 2>/dev/null)
+ 
+-
+-CFLAGS += -D S_$(SCHEDFLAG)
+-
+-
+ xv6.img: bootblock kernel fs.img
+ 	dd if=/dev/zero of=xv6.img count=10000
+ 	dd if=bootblock of=xv6.img conv=notrunc
+@@ -153,7 +146,7 @@
+ 	$(OBJDUMP) -S _forktest > forktest.asm
+ 
+ mkfs: mkfs.c fs.h
+-	gcc -m32  -Wall -o mkfs mkfs.c
++	gcc -m32 -Werror -Wall -o mkfs mkfs.c
+ 
+ UPROGS=\
+ 	_cat\
+@@ -168,11 +161,6 @@
+ 	_sh\
+ 	_wc\
+ 	_zombie\
+-	_export\
+-	_FRRsanity\
+-	_MLFQsanity\
+-	_wait2test\
+-	
+ 
+ fs.img: mkfs README $(UPROGS)
+ 	./mkfs fs.img README $(UPROGS)
+@@ -242,7 +230,7 @@
+ EXTRA=\
+ 	mkfs.c ulib.c user.h cat.c echo.c forktest.c grep.c kill.c\
+ 	ln.c ls.c mkdir.c rm.c stressfs.c usertests.c wc.c zombie.c\
+-	printf.c umalloc.c export.c wait2test.c  FRRsanity.c MLFQsanity.c\
++	printf.c umalloc.c\
+ 	README dot-bochsrc *.pl toc.* runoff runoff1 runoff.list\
+ 	.gdbinit.tmpl gdbutil\
+ 

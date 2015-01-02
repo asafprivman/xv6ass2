@@ -6,6 +6,26 @@
 #include "mmu.h"
 #include "proc.h"
 
+int 
+sys_wait2(void)
+{
+    int *wtime; 
+    if ((argptr(0, (void*)&wtime, sizeof(wtime))) <0) return -1;
+    int *rtime; 
+    if ((argptr(1, (void*)&rtime, sizeof(rtime))) <0) return -1;
+    int *iotime; 
+    if ((argptr(2, (void*)&iotime, sizeof(iotime))) <0) return -1;
+    return wait2(wtime,rtime,iotime);
+}
+
+int
+sys_getPriority(void)
+{
+   int *pid;
+   if((argptr(0,(void*) &pid,sizeof(&pid))) < 0) return -1;
+   return getPriority(pid);
+}
+
 int
 sys_fork(void)
 {

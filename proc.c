@@ -8,6 +8,71 @@
 #include "spinlock.h"
 #include "signal.h"
 
+#define QUEUE_SIZE (NPROC)
+//Elements required for FRR
+ 
+struct proc* procQueue[QUEUE_SIZE];
+int qIn = 0;
+int qOut = 0;
+
+void QueuePut(struct proc* p) {
+ procQueue[qIn] = p;
+ qIn = (qIn + 1) % QUEUE_SIZE; 
+}
+
+struct proc* QueueGet(){
+ struct proc* res =  procQueue[qOut];
+ qOut = (qOut + 1) % QUEUE_SIZE;
+ return res;
+}
+
+struct proc* procQueue1[QUEUE_SIZE];
+int qIn1 = 0;
+int qOut1 = 0;
+
+void QueuePut1(struct proc* p) {
+ procQueue1[qIn1] = p;
+ qIn1 = (qIn1 + 1) % QUEUE_SIZE;
+}
+
+struct proc* QueueGet1(){
+ struct proc* res =  procQueue1[qOut1];
+ qOut1 = (qOut1 + 1) % QUEUE_SIZE;
+ 
+ return res;
+}
+
+
+struct proc* procQueue2[QUEUE_SIZE];
+int qIn2 = 0;
+int qOut2 = 0;
+
+void QueuePut2(struct proc* p) {
+ procQueue2[qIn2] = p;
+ qIn2 = (qIn2 + 1) % QUEUE_SIZE;
+}
+
+struct proc* QueueGet2(){
+ struct proc* res =  procQueue2[qOut2];
+ qOut2 = (qOut2 + 1) % QUEUE_SIZE;
+ return res;
+}
+
+struct proc* procQueue3[QUEUE_SIZE];
+int qIn3 = 0;
+int qOut3 = 0;
+
+void QueuePut3(struct proc* p) {
+  procQueue3[qIn3] = p;
+  qIn3 = (qIn3 + 1) % QUEUE_SIZE;
+}
+
+struct proc* QueueGet3(){
+ struct proc* res =  procQueue3[qOut3];
+ qOut3 = (qOut3 + 1) % QUEUE_SIZE;
+ return res;
+}
+
 struct {
   struct spinlock lock;
   struct proc proc[NPROC];
@@ -25,6 +90,19 @@ void
 pinit(void)
 {
   initlock(&ptable.lock, "ptable");
+}
+
+void
+updateproc() {
+  struct proc *p;
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    if(p->state == SLEEPING){
+      p->wtime ++;
+    }
+    if(p->state == RUNNING){
+      p->rtime ++;
+    }
+  }
 }
 
 //PAGEBREAK: 32
@@ -46,8 +124,14 @@ allocproc(void)
   return 0;
 
 found:
-  p->state = EMBRYO;
-  p->pid = nextpid++;
+  p->state      = EMBRYO;
+  p->pid        = nextpid++;
+  p->quanta     = 0;
+  p->ctime      = ticks;
+  p->rtime      = 0;
+  p->wtime      = 0;
+  p->priority   = 2;
+
   release(&ptable.lock);
 
   // Allocate kernel stack.
@@ -101,6 +185,14 @@ userinit(void)
   p->cwd = namei("/");
 
   p->state = RUNNABLE;
+
+  #ifdef FRR
+  QueuePut(p);  
+  #elif FCFS
+  QueuePut(p);  
+  #elif MLQ
+  QueuePut2(p);
+  #endif
 }
 
 // Grow current process's memory by n bytes.
@@ -157,6 +249,22 @@ fork(void)
  
   pid = np->pid;
   np->state = RUNNABLE;
+
+  #ifdef FRR
+   QueuePut(np);  
+  #elif FCFS
+  QueuePut(np);  
+  #elif MLQ
+   np->priority = 2;
+   int prior = np->priority;   
+   if (prior == 1) 
+    QueuePut1(np);
+   else if (prior == 2) 
+    QueuePut2(np);
+   else if (prior == 3) 
+    QueuePut3(np);  
+   #endif  
+
   safestrcpy(np->name, proc->name, sizeof(proc->name));
   return pid;
 }
@@ -184,6 +292,7 @@ exit(void)
   iput(proc->cwd);
   proc->cwd = 0;
 
+  proc->etime = ticks;
   acquire(&ptable.lock);
 
   // Parent might be sleeping in wait().
@@ -247,6 +356,64 @@ wait(void)
   }
 }
 
+int
+getPriority(int* pid){
+  struct proc *p;
+  acquire(&ptable.lock);
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){//scan table for pid
+      if (*pid == p->pid){
+      release(&ptable.lock);
+      return p->priority; }   
+  }
+  release(&ptable.lock);
+  return 0; 
+}
+
+int
+wait2(int* wtime,int* rtime,int* iotime)
+{
+  //cprintf("wait2");
+  struct proc *p;
+  int havekids, pid;
+
+  acquire(&ptable.lock);
+  for(;;){
+    // Scan through table looking for zombie children.
+    havekids = 0;
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+      if(p->parent != proc)
+        continue;
+      havekids = 1;
+      if(p->state == ZOMBIE){
+        // Found one.
+        pid = p->pid;
+        kfree(p->kstack);
+        p->kstack = 0;
+        freevm(p->pgdir);
+        p->state = UNUSED;
+        p->pid = 0;
+        p->parent = 0;
+        p->name[0] = 0;
+        p->killed = 0;
+        *wtime= (p->etime - p->ctime) - (p->rtime + p->wtime);
+        *rtime = p->rtime;
+        *iotime = p->wtime;
+        release(&ptable.lock);
+        return pid;
+      }
+    }
+
+    // No point waiting if we don't have any children.
+    if(!havekids || proc->killed){
+      release(&ptable.lock);
+      return -1;
+    }
+
+    // Wait for children to exit.  (See wakeup1 call in proc_exit.)
+    sleep(proc, &ptable.lock);  //DOC: wait-sleep
+  }
+}
+
 void
 register_handler(sighandler_t sighandler)
 {
@@ -275,7 +442,7 @@ register_handler(sighandler_t sighandler)
 void
 scheduler(void)
 {
-  struct proc *p;
+  //struct proc *p;
 
   for(;;){
     // Enable interrupts on this processor.
@@ -283,6 +450,9 @@ scheduler(void)
 
     // Loop over process table looking for process to run.
     acquire(&ptable.lock);
+
+    #ifdef DEFAULT
+    struct proc *p;
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
       if(p->state != RUNNABLE)
         continue;
@@ -300,6 +470,95 @@ scheduler(void)
       // It should have changed its p->state before coming back.
       proc = 0;
     }
+   #elif FRR
+   struct proc *p;
+      
+      if(qIn==qOut){
+ 
+ release(&ptable.lock);
+ continue;
+      }
+    else{
+      p = QueueGet(); 
+      
+      proc = p;
+      
+      switchuvm(p);
+      
+      p->state = RUNNING;
+      
+      swtch(&cpu->scheduler, proc->context);
+      switchkvm();
+      
+      // Process is done running for now.
+      // It should have changed its p->state before coming back.
+      proc = 0;
+    
+      }
+      #elif FCFS
+      struct proc *p;     
+      if(qIn==qOut){
+ release(&ptable.lock);
+ continue;
+      }
+    else{
+      p = QueueGet(); 
+      proc = p;
+      switchuvm(p);
+      p->state = RUNNING;
+      swtch(&cpu->scheduler, proc->context);
+      switchkvm();
+      // Process is done running for now.
+      // It should have changed its p->state before coming back.
+      proc = 0;
+    
+      }
+    #elif MLQ
+     struct proc *p;
+     if(qIn1 != qOut1){
+ p = QueueGet1();
+ proc = p;
+ switchuvm(p);
+ p->state = RUNNING;
+ swtch(&cpu->scheduler, proc->context);
+ switchkvm();
+ // Process is done running for now.
+ // It should have changed its p->state before coming back.
+ proc = 0;
+     }
+     
+     else if(qIn2 != qOut2){
+         p = QueueGet2();
+ proc = p;
+ switchuvm(p);
+ p->state = RUNNING;
+ swtch(&cpu->scheduler, proc->context);
+ switchkvm();
+ // Process is done running for now.
+ // It should have changed its p->state before coming back.
+ proc = 0;
+     }
+     
+     else if(qIn3 != qOut3){   
+         p = QueueGet3();
+ proc = p;
+ switchuvm(p);
+ p->state = RUNNING;
+ swtch(&cpu->scheduler, proc->context);
+ switchkvm();
+
+ // Process is done running for now.
+ // It should have changed its p->state before coming back.
+ proc = 0;
+     }     
+     
+     else{
+         release(&ptable.lock);
+ continue;
+     }
+     
+    #endif
+
     release(&ptable.lock);
 
   }
@@ -331,6 +590,23 @@ yield(void)
 {
   acquire(&ptable.lock);  //DOC: yieldlock
   proc->state = RUNNABLE;
+  #ifdef FRR
+  QueuePut(proc);  
+  #elif FCFS
+  QueuePut(proc);  
+  #elif MLQ
+  if( (proc->quanta % QUANTA == 0)  && (proc-> priority != 3)){
+    proc->priority++;
+  }
+ 
+  if(proc->priority == 1) 
+    QueuePut1(proc); 
+  else if(proc -> priority == 2) 
+    QueuePut2(proc);
+  else  
+    QueuePut3(proc);
+   
+  #endif
   sched();
   release(&ptable.lock);
 }
@@ -380,6 +656,7 @@ sleep(void *chan, struct spinlock *lk)
   // Go to sleep.
   proc->chan = chan;
   proc->state = SLEEPING;
+  proc->quanta = 0;
   sched();
 
   // Tidy up.
@@ -400,9 +677,26 @@ wakeup1(void *chan)
 {
   struct proc *p;
 
-  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
-    if(p->state == SLEEPING && p->chan == chan)
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
+    if(p->state == SLEEPING && p->chan == chan) {
       p->state = RUNNABLE;
+      p->quanta=0;
+      #ifdef FRR
+      QueuePut(p);  
+      #elif FCFS
+      QueuePut(p);  
+      #elif MLQ
+      if(p->priority != 1) 
+        p->priority--;
+      if(p->priority == 1) 
+        QueuePut1(p);
+      else if(p->priority == 2) 
+        QueuePut2(p);
+      else 
+        QueuePut3(p);
+      #endif
+    }
+  }
 }
 
 // Wake up all processes sleeping on chan.
@@ -426,9 +720,28 @@ kill(int pid)
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
     if(p->pid == pid){
       p->killed = 1;
+      p->etime =  ticks;
+      p->quanta = 0;
       // Wake process from sleep if necessary.
-      if(p->state == SLEEPING)
+      if(p->state == SLEEPING) {
         p->state = RUNNABLE;
+      }
+
+      #ifdef FRR
+      QueuePut(p);
+      #elif FCFS
+      QueuePut(p);
+      #elif MLQ
+      if(p->priority != 1) 
+        p->priority--;
+      if(p->priority == 1) 
+        QueuePut1(p);
+      else if (p->priority ==2) 
+        QueuePut2(p);
+      else 
+        QueuePut3(p);
+      #endif  
+
       release(&ptable.lock);
       return 0;
     }
