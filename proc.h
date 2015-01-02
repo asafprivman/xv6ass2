@@ -74,6 +74,7 @@ struct proc {
   int rtime;
   int quanta;
   int priority;
+  int ticksForSchedule[1000];
 };
 
 // Process memory is laid out contiguously, low addresses first:
