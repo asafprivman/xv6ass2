@@ -8,7 +8,7 @@
 #include "spinlock.h"
 #include "signal.h"
 
-#define QUEUE_SIZE (NPROC)
+#define QUEUE_SIZE NPROC
 
 //There are 3 queues in the size of NPROC. FRR & FCFS will
 //use procQueue[2], firstInQ[2] & lastInQ[2] by default
@@ -20,14 +20,14 @@ int lastInQ[3] = { 0 };
 //Priority 1 = Medium
 //Priority 2 = Low
 void queuePush(struct proc* p, int pr) {
-	procQueue[pr][firstInQ[pr]] = p;
-	firstInQ[pr] = (firstInQ[pr] + 1) % QUEUE_SIZE;
+	procQueue[pr][lastInQ[pr]] = p;
+	lastInQ[pr] = (lastInQ[pr] + 1) % QUEUE_SIZE;
 }
 
 struct proc* queuePop(int pr) {
 	struct proc *res;
-	res = procQueue[pr][lastInQ[pr]];
-	lastInQ[pr] = (lastInQ[pr] + 1) % QUEUE_SIZE;
+	res = procQueue[pr][firstInQ[pr]];
+	firstInQ[pr] = (firstInQ[pr] + 1) % QUEUE_SIZE;
 	return res;
 }
 
@@ -339,7 +339,7 @@ int wait2(int* wtime, int* rtime, int* iotime) {
 }
 
 int get_sched_record(int *s_tick, int *e_tick, int *cpu) {
-
+	return 0;
 }
 
 int getPriority(int* pid) {

@@ -1,5 +1,6 @@
 // Segments in proc->gdt.
-#define NSEGS     7
+#define NSEGS     	7
+#define NPROC		64
 
 // Per-CPU state
 struct cpu {
@@ -14,6 +15,10 @@ struct cpu {
   // Cpu-local storage variables; see below
   struct cpu *cpu;
   struct proc *proc;           // The currently-running process.
+
+  struct proc *procQ[NPROC];
+  int firstInQ;
+  int LastInQ;
 };
 
 extern struct cpu cpus[NCPU];
@@ -74,7 +79,7 @@ struct proc {
   int rtime;
   int quanta;
   int priority;
-  int ticksForSchedule[1000];
+  int ticksForSchedule[10000];
 };
 
 // Process memory is laid out contiguously, low addresses first:
