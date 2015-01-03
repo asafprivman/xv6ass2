@@ -4,6 +4,7 @@ struct stat;
 
 // Assignment2
 int wait2(int *, int *,int *);
+int get_sched_record(int *, int *,int *);
 int getPriority(int*);
 // ***********
 

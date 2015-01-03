@@ -294,19 +294,6 @@ int wait(void) {
 	}
 }
 
-int getPriority(int* pid) {
-	struct proc *p;
-	acquire(&ptable.lock);
-	for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) { //scan table for pid
-		if (*pid == p->pid) {
-			release(&ptable.lock);
-			return p->priority;
-		}
-	}
-	release(&ptable.lock);
-	return 0;
-}
-
 int wait2(int* wtime, int* rtime, int* iotime) {
 	//cprintf("wait2");
 	struct proc *p;
@@ -331,8 +318,9 @@ int wait2(int* wtime, int* rtime, int* iotime) {
 				p->parent = 0;
 				p->name[0] = 0;
 				p->killed = 0;
-				*wtime = (p->etime - p->ctime) - (p->rtime + p->wtime);
-				*rtime = p->rtime;
+
+				*wtime	= (p->etime - p->ctime) - (p->rtime + p->wtime);
+				*rtime 	= p->rtime;
 				*iotime = p->wtime;
 				release(&ptable.lock);
 				return pid;
@@ -348,6 +336,23 @@ int wait2(int* wtime, int* rtime, int* iotime) {
 		// Wait for children to exit.  (See wakeup1 call in proc_exit.)
 		sleep(proc, &ptable.lock); //DOC: wait-sleep
 	}
+}
+
+int get_sched_record(int *s_tick, int *e_tick, int *cpu) {
+
+}
+
+int getPriority(int* pid) {
+	struct proc *p;
+	acquire(&ptable.lock);
+	for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) { //scan table for pid
+		if (*pid == p->pid) {
+			release(&ptable.lock);
+			return p->priority;
+		}
+	}
+	release(&ptable.lock);
+	return 0;
 }
 
 void register_handler(sighandler_t sighandler) {

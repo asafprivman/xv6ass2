@@ -9,13 +9,29 @@
 int 
 sys_wait2(void)
 {
-    int *wtime; 
-    if ((argptr(0, (void*)&wtime, sizeof(wtime))) <0) return -1;
-    int *rtime; 
-    if ((argptr(1, (void*)&rtime, sizeof(rtime))) <0) return -1;
-    int *iotime; 
-    if ((argptr(2, (void*)&iotime, sizeof(iotime))) <0) return -1;
-    return wait2(wtime,rtime,iotime);
+    int *wtime, *rtime, *iotime;
+    if ((argptr(0, (void*)&wtime, sizeof(wtime))) < 0)
+    	return -1;
+    if ((argptr(1, (void*)&rtime, sizeof(rtime))) < 0)
+    	return -1;
+    if ((argptr(2, (void*)&iotime, sizeof(iotime))) < 0)
+    	return -1;
+
+    return wait2(wtime, rtime, iotime);
+}
+
+int
+sys_get_sched_record(void)
+{
+	int *s_tick, *e_tick, *cpu;
+    if ((argptr(0, (void*)&s_tick, sizeof(s_tick))) <0)
+    	return -1;
+    if ((argptr(1, (void*)&e_tick, sizeof(e_tick))) <0)
+    	return -1;
+    if ((argptr(2, (void*)&cpu, sizeof(cpu))) <0)
+    	return -1;
+
+    return get_sched_record(s_tick, e_tick, cpu);
 }
 
 int

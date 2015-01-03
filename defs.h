@@ -115,6 +115,7 @@ void            sleep(void*, struct spinlock*);
 void            userinit(void);
 int             wait(void);
 int             wait2(int*,int*,int*);
+int 			get_sched_record(int*, int*, int*);
 void            wakeup(void*);
 void            yield(void);
 // Assignment 2
