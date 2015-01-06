@@ -8,12 +8,10 @@
 #include "spinlock.h"
 #include "signal.h"
 
-#define QUEUE_SIZE NPROC
-
 struct spinlock cpusLock;
 //There are 3 queues in the size of NPROC. FRR & FCFS will
 //use procQueue[2], firstInQ[2] & lastInQ[2] by default
-struct proc *procQueue[3][QUEUE_SIZE];
+struct proc *procQueue[3][NPROC];
 int firstInQ[3] = { 0 };
 int lastInQ[3] = { 0 };
 
@@ -22,23 +20,21 @@ int lastInQ[3] = { 0 };
 //Priority 2 = Low
 void queuePush(struct proc *p, int pr) {
 	procQueue[pr][lastInQ[pr]] = p;
-	lastInQ[pr] = (lastInQ[pr] + 1) % QUEUE_SIZE;
+	lastInQ[pr] = (lastInQ[pr] + 1) % NPROC;
 }
 
 struct proc* queuePop(int pr) {
 	struct proc *res;
 	res = procQueue[pr][firstInQ[pr]];
-	firstInQ[pr] = (firstInQ[pr] + 1) % QUEUE_SIZE;
+	firstInQ[pr] = (firstInQ[pr] + 1) % NPROC;
 	return res;
 }
 
 int cpuQueuePush(struct proc *p, struct cpu *minCpu) {
 	if (minCpu->numOfProcs != NPROC) {
 		minCpu->procQ[minCpu->lastInQ] = p;
-		minCpu->lastInQ = (minCpu->lastInQ + 1) % QUEUE_SIZE;
+		minCpu->lastInQ = (minCpu->lastInQ + 1) % NPROC;
 		minCpu->numOfProcs++;
-		cprintf("cpu %d was pushed a proc and now has %d procs\n", minCpu->id,
-				minCpu->numOfProcs);
 		return 0;
 	} else {
 		return -1;
@@ -47,13 +43,11 @@ int cpuQueuePush(struct proc *p, struct cpu *minCpu) {
 
 struct proc* cpuQueuePop(struct cpu *c) {
 	if (c->numOfProcs != 0) {
-		struct proc *res;
-		res = c->procQ[c->firstInQ];
-		c->firstInQ = (c->firstInQ + 1) % QUEUE_SIZE;
+		struct proc *retProc;
+		retProc = c->procQ[c->firstInQ];
+		c->firstInQ = (c->firstInQ + 1) % NPROC;
 		c->numOfProcs--;
-		cprintf("cpu %d popped a proc and now has %d procs\n", c->id,
-				c->numOfProcs);
-		return res;
+		return retProc;
 	} else {
 		return 0;
 	}
@@ -574,62 +568,6 @@ void scheduler(void) {
 				}
 			}
 		}
-
-//		acquire(&(cpu->lock));
-//		p = cpuQueuePop(cpu);
-//		release(&(cpu->lock));
-//		// if this CPU has no processes to run?
-//		if (p == 0) {
-//			//looking for a cpu that has a process to run
-//			struct cpu *nonEmptyCpu = 0, *c;
-//			acquire(&cpusLock);
-//			// Find a cpu with number of processes > 0
-//			for(c = cpus; c < &cpus[ncpu]; c++) {
-//				if(c->numOfProcs > 0) {
-//					// Found!
-//					nonEmptyCpu = c;
-//					break;
-//				}
-//			}
-//			release(&cpusLock);
-//			// If we found an non empty cpu that has processes, than schedule the process.
-//			if (nonEmptyCpu != 0) {
-//				acquire(&(nonEmptyCpu->lock));
-//				p = cpuQueuePop(nonEmptyCpu);
-//				//after taking the process out of the nonempty cpu
-//				//we are scheduling it to run on this cpu.
-//				proc = p;
-//				switchuvm(p);
-//				p->state = RUNNING;
-//				struct cpuProc info = {ticks,0,cpu->id};
-//				p->schedulingInfo[p->timesScheduled++] = &info;
-//				p->quanta = 0;
-//				swtch(&cpu->scheduler, proc->context);
-//				switchkvm();
-//
-//				// Process is done running for now.
-//				// It should have changed its p->state before coming back.
-//				proc = 0;
-//				release(&(nonEmptyCpu->lock));
-//			}
-//		} else {
-//			if(p->state == RUNNABLE) {
-//				acquire(&(cpu->lock));
-//				proc = p;
-//				switchuvm(p);
-//				p->state = RUNNING;
-//				struct cpuProc info = {ticks,0,cpu->id};
-//				p->schedulingInfo[p->timesScheduled++] = &info;
-//				p->quanta = 0;
-//				swtch(&cpu->scheduler, proc->context);
-//				switchkvm();
-//
-//				// Process is done running for now.
-//				// It should have changed its p->state before coming back.
-//				proc = 0;
-//				release(&(cpu->lock));
-//			}
-//		}
 #endif
 	}
 }
