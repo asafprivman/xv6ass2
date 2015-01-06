@@ -1,6 +1,7 @@
 // Segments in proc->gdt.
 #define NSEGS     	7
-#define NPROC		64
+
+#include "spinlock.h"
 
 // Per-CPU state
 struct cpu {
@@ -18,7 +19,9 @@ struct cpu {
 
   struct proc *procQ[NPROC];
   int firstInQ;
-  int LastInQ;
+  int lastInQ;
+  int numOfProcs;
+  struct spinlock lock;
 };
 
 extern struct cpu cpus[NCPU];
@@ -54,6 +57,12 @@ struct context {
   uint eip;
 };
 
+struct cpuProc {
+  uint schedTime;
+  uint stopTime;
+  uchar cpuId;
+};
+
 enum procstate { UNUSED, EMBRYO, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
 typedef void (*sighandler_t)(void);
@@ -79,7 +88,8 @@ struct proc {
   int rtime;
   int quanta;
   int priority;
-  int ticksForSchedule[10000];
+  struct cpuProc* schedulingInfo[1000];
+  int timesScheduled;
 };
 
 // Process memory is laid out contiguously, low addresses first:

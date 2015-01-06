@@ -10,6 +10,7 @@
 
 #define QUEUE_SIZE NPROC
 
+struct spinlock cpusLock;
 //There are 3 queues in the size of NPROC. FRR & FCFS will
 //use procQueue[2], firstInQ[2] & lastInQ[2] by default
 struct proc *procQueue[3][QUEUE_SIZE];
@@ -19,7 +20,7 @@ int lastInQ[3] = { 0 };
 //Priority 0 = High
 //Priority 1 = Medium
 //Priority 2 = Low
-void queuePush(struct proc* p, int pr) {
+void queuePush(struct proc *p, int pr) {
 	procQueue[pr][lastInQ[pr]] = p;
 	lastInQ[pr] = (lastInQ[pr] + 1) % QUEUE_SIZE;
 }
@@ -29,6 +30,46 @@ struct proc* queuePop(int pr) {
 	res = procQueue[pr][firstInQ[pr]];
 	firstInQ[pr] = (firstInQ[pr] + 1) % QUEUE_SIZE;
 	return res;
+}
+
+int cpuQueuePush(struct proc *p, struct cpu *minCpu) {
+	if (minCpu->numOfProcs != NPROC) {
+		minCpu->procQ[minCpu->lastInQ] = p;
+		minCpu->lastInQ = (minCpu->lastInQ + 1) % QUEUE_SIZE;
+		minCpu->numOfProcs++;
+		cprintf("cpu %d was pushed a proc and now has %d procs\n", minCpu->id,
+				minCpu->numOfProcs);
+		return 0;
+	} else {
+		return -1;
+	}
+}
+
+struct proc* cpuQueuePop(struct cpu *c) {
+	if (c->numOfProcs != 0) {
+		struct proc *res;
+		res = c->procQ[c->firstInQ];
+		c->firstInQ = (c->firstInQ + 1) % QUEUE_SIZE;
+		c->numOfProcs--;
+		cprintf("cpu %d popped a proc and now has %d procs\n", c->id,
+				c->numOfProcs);
+		return res;
+	} else {
+		return 0;
+	}
+}
+
+struct cpu* minProcCpuGet(void) {
+	int minProcCpu = NPROC;
+	struct cpu *c, *minCpu;
+
+	for (c = cpus; c < cpus + ncpu; c++) {
+		if (c->numOfProcs < minProcCpu) {
+			minProcCpu = c->numOfProcs;
+			minCpu = c;
+		}
+	}
+	return minCpu;
 }
 
 struct {
@@ -48,7 +89,7 @@ void pinit(void) {
 	initlock(&ptable.lock, "ptable");
 }
 
-void updateproc() {
+void updateProc() {
 	struct proc *p;
 	for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
 		if (p->state == SLEEPING) {
@@ -84,7 +125,8 @@ allocproc(void) {
 	p->rtime = 0;
 	p->wtime = 0;
 	p->priority = 2;
-	memset(p->ticksForSchedule, 0, 1000);
+	//memset(p->schedulingInfo, 0, 10000);
+	p->timesScheduled = 0;
 
 	release(&ptable.lock);
 
@@ -144,6 +186,14 @@ void userinit(void) {
 	queuePush(p, 2);
 #elif MLQ
 	queuePush(p, 1);
+#elif MC_FRR
+	acquire(&cpusLock);
+	struct cpu *minCpu = minProcCpuGet();
+	release(&cpusLock);
+
+	acquire(&(minCpu->lock));
+	cpuQueuePush(p, minCpu);
+	release(&(minCpu->lock));
 #endif
 }
 
@@ -205,6 +255,14 @@ int fork(void) {
 #elif MLQ
 	np->priority = 1;
 	queuePush(np, np->priority);
+#elif MC_FRR
+	acquire(&cpusLock);
+	struct cpu *minCpu = minProcCpuGet();
+	release(&cpusLock);
+
+	acquire(&(minCpu->lock));
+	cpuQueuePush(np, minCpu);
+	release(&(minCpu->lock));
 #endif
 
 	safestrcpy(np->name, proc->name, sizeof(proc->name));
@@ -249,6 +307,10 @@ void exit(void) {
 
 	// Jump into the scheduler, never to return.
 	proc->state = ZOMBIE;
+#ifdef MC_FRR
+	release(&ptable.lock);
+	acquire(&cpu->lock);
+#endif
 	sched();
 	panic("zombie exit");
 }
@@ -319,8 +381,8 @@ int wait2(int* wtime, int* rtime, int* iotime) {
 				p->name[0] = 0;
 				p->killed = 0;
 
-				*wtime	= (p->etime - p->ctime) - (p->rtime + p->wtime);
-				*rtime 	= p->rtime;
+				*wtime = (p->etime - p->ctime) - (p->rtime + p->wtime);
+				*rtime = p->rtime;
 				*iotime = p->wtime;
 				release(&ptable.lock);
 				return pid;
@@ -459,16 +521,132 @@ void scheduler(void) {
 		proc = 0;
 #endif
 		release(&ptable.lock);
+
+#ifdef MC_FRR
+		acquire(&(cpu->lock));
+		p = cpuQueuePop(cpu);
+		release(&(cpu->lock));
+		if(p != 0) {
+			if(p->state == RUNNABLE) {
+				acquire(&(cpu->lock));
+				proc = p;
+				switchuvm(p);
+				p->state = RUNNING;
+				struct cpuProc info = {ticks,0,cpu->id};
+				p->schedulingInfo[p->timesScheduled++] = &info;
+				p->quanta = 0;
+				swtch(&cpu->scheduler, proc->context);
+				switchkvm();
+
+				// Process is done running for now.
+				// It should have changed its p->state before coming back.
+				proc = 0;
+				release(&(cpu->lock));
+			}
+		} else {
+			acquire(&(cpusLock));
+			struct cpu * newCpu;
+			for(newCpu = cpus; newCpu < &cpus[NCPU]; newCpu++) {
+				if(newCpu->numOfProcs > 0) {
+					break;
+				}
+			}
+			release(&(cpusLock));
+			if(newCpu != '\0') {
+				acquire(&(newCpu->lock));
+				p = cpuQueuePop(newCpu);
+				release(&(newCpu->lock));
+				if(p != '\0') {
+					acquire(&(cpu->lock));
+					proc = p;
+					switchuvm(p);
+					p->state = RUNNING;
+					struct cpuProc info = {ticks,0,cpu->id};
+					p->schedulingInfo[p->timesScheduled++] = &info;
+					p->quanta = 0;
+					swtch(&cpu->scheduler, proc->context);
+					switchkvm();
+
+					// Process is done running for now.
+					// It should have changed its p->state before coming back.
+					proc = 0;
+					release(&(cpu->lock));
+				}
+			}
+		}
+
+//		acquire(&(cpu->lock));
+//		p = cpuQueuePop(cpu);
+//		release(&(cpu->lock));
+//		// if this CPU has no processes to run?
+//		if (p == 0) {
+//			//looking for a cpu that has a process to run
+//			struct cpu *nonEmptyCpu = 0, *c;
+//			acquire(&cpusLock);
+//			// Find a cpu with number of processes > 0
+//			for(c = cpus; c < &cpus[ncpu]; c++) {
+//				if(c->numOfProcs > 0) {
+//					// Found!
+//					nonEmptyCpu = c;
+//					break;
+//				}
+//			}
+//			release(&cpusLock);
+//			// If we found an non empty cpu that has processes, than schedule the process.
+//			if (nonEmptyCpu != 0) {
+//				acquire(&(nonEmptyCpu->lock));
+//				p = cpuQueuePop(nonEmptyCpu);
+//				//after taking the process out of the nonempty cpu
+//				//we are scheduling it to run on this cpu.
+//				proc = p;
+//				switchuvm(p);
+//				p->state = RUNNING;
+//				struct cpuProc info = {ticks,0,cpu->id};
+//				p->schedulingInfo[p->timesScheduled++] = &info;
+//				p->quanta = 0;
+//				swtch(&cpu->scheduler, proc->context);
+//				switchkvm();
+//
+//				// Process is done running for now.
+//				// It should have changed its p->state before coming back.
+//				proc = 0;
+//				release(&(nonEmptyCpu->lock));
+//			}
+//		} else {
+//			if(p->state == RUNNABLE) {
+//				acquire(&(cpu->lock));
+//				proc = p;
+//				switchuvm(p);
+//				p->state = RUNNING;
+//				struct cpuProc info = {ticks,0,cpu->id};
+//				p->schedulingInfo[p->timesScheduled++] = &info;
+//				p->quanta = 0;
+//				swtch(&cpu->scheduler, proc->context);
+//				switchkvm();
+//
+//				// Process is done running for now.
+//				// It should have changed its p->state before coming back.
+//				proc = 0;
+//				release(&(cpu->lock));
+//			}
+//		}
+#endif
 	}
 }
 
 // Enter scheduler.  Must hold only ptable.lock
 // and have changed proc->state.
 void sched(void) {
-	int intena;
-
+#ifndef MC_FRR
 	if (!holding(&ptable.lock))
 		panic("sched ptable.lock");
+#else
+	if(!holding(&(cpu->lock)))
+	panic("sched cpu->lock");
+#endif
+
+	int intena;
+
 	if (cpu->ncli != 1)
 		panic("sched locks");
 	if (proc->state == RUNNING)
@@ -482,7 +660,9 @@ void sched(void) {
 
 // Give up the CPU for one scheduling round.
 void yield(void) {
+#ifndef MC_FRR
 	acquire(&ptable.lock); //DOC: yieldlock
+#endif
 	proc->state = RUNNABLE;
 #ifdef FRR
 	queuePush(proc, 2);
@@ -492,19 +672,31 @@ void yield(void) {
 	if( (proc->quanta % QUANTA == 0) && (proc-> priority != 2)) {
 		proc->priority++;
 	}
-
 	queuePush(proc, proc->priority);
+#elif MC_FRR
+	acquire(&(cpu->lock));
+	cpuQueuePush(proc, cpu);
 #endif
 	sched();
+#ifdef MC_FRR
+	release(&(cpu->lock));
+#else
 	release(&ptable.lock);
+#endif
 }
 
 // A fork child's very first scheduling by scheduler()
 // will swtch here.  "Return" to user space.
 void forkret(void) {
 	static int first = 1;
+
+#ifndef MC_FRR
 	// Still holding ptable.lock from scheduler.
 	release(&ptable.lock);
+#else
+	// Still holding cpu->lock from scheduler.
+	release(&(cpu->lock));
+#endif
 
 	if (first) {
 		// Some initialization functions must be run in the context
@@ -541,16 +733,32 @@ void sleep(void *chan, struct spinlock *lk) {
 	proc->chan = chan;
 	proc->state = SLEEPING;
 	proc->quanta = 0;
+
+#ifdef MC_FRR
+	if(lk != &cpu->lock) {
+		acquire(&cpu->lock);
+		release(&ptable.lock);
+	}
+#endif
+
 	sched();
 
 	// Tidy up.
 	proc->chan = 0;
 
+#ifdef MC_FRR
+	// Reacquire original lock.
+	if(lk != &cpu->lock) { //DOC: sleeplock2
+		release(&cpu->lock);
+		acquire(lk);
+	}
+#else
 	// Reacquire original lock.
 	if (lk != &ptable.lock) { //DOC: sleeplock2
 		release(&ptable.lock);
 		acquire(lk);
 	}
+#endif
 }
 
 //PAGEBREAK!
@@ -570,8 +778,15 @@ static void wakeup1(void *chan) {
 #elif MLQ
 			if(p->priority != 0)
 			p->priority--;
-
 			queuePush(p, p->priority);
+#elif MC_FRR
+			acquire(&cpusLock);
+			struct cpu *minCpu = minProcCpuGet();
+			release(&cpusLock);
+
+			acquire(&(minCpu->lock));
+			cpuQueuePush(p, minCpu);
+			release(&(minCpu->lock));
 #endif
 		}
 	}
@@ -599,17 +814,24 @@ int kill(int pid) {
 			// Wake process from sleep if necessary.
 			if (p->state == SLEEPING) {
 				p->state = RUNNABLE;
-			}
-
 #ifdef FRR
-			queuePush(p, 2);
+				queuePush(p, 2);
 #elif FCFS
-			queuePush(p, 2);
+				queuePush(p, 2);
 #elif MLQ
-			if(p->priority != 0)
-			p->priority--;
-			queuePush(p, p->priority);
+				if(p->priority != 0)
+				p->priority--;
+				queuePush(p, p->priority);
+#elif MC_FRR
+				acquire(&cpusLock);
+				struct cpu *minCpu = minProcCpuGet();
+				release(&cpusLock);
+
+				acquire(&(minCpu->lock));
+				cpuQueuePush(p, minCpu);
+				release(&(minCpu->lock));
 #endif
+			}
 
 			release(&ptable.lock);
 			return 0;

@@ -119,7 +119,7 @@ int 			get_sched_record(int*, int*, int*);
 void            wakeup(void*);
 void            yield(void);
 // Assignment 2
-void            updateproc();
+void            updateProc();
 int				getPriority(int*);
 
 // swtch.S
