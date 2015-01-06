@@ -8,7 +8,6 @@
 #include "spinlock.h"
 #include "signal.h"
 
-struct spinlock cpusLock;
 //There are 3 queues in the size of NPROC. FRR & FCFS will
 //use procQueue[2], firstInQ[2] & lastInQ[2] by default
 struct proc *procQueue[3][NPROC];
@@ -30,15 +29,14 @@ struct proc* queuePop(int pr) {
 	return res;
 }
 
-int cpuQueuePush(struct proc *p, struct cpu *minCpu) {
+void cpuQueuePush(struct proc *p, struct cpu *minCpu) {
+	acquire(&(minCpu->lock));
 	if (minCpu->numOfProcs != NPROC) {
 		minCpu->procQ[minCpu->lastInQ] = p;
 		minCpu->lastInQ = (minCpu->lastInQ + 1) % NPROC;
 		minCpu->numOfProcs++;
-		return 0;
-	} else {
-		return -1;
 	}
+	release(&(minCpu->lock));
 }
 
 struct proc* cpuQueuePop(struct cpu *c) {
@@ -181,13 +179,7 @@ void userinit(void) {
 #elif MLQ
 	queuePush(p, 1);
 #elif MC_FRR
-	acquire(&cpusLock);
-	struct cpu *minCpu = minProcCpuGet();
-	release(&cpusLock);
-
-	acquire(&(minCpu->lock));
-	cpuQueuePush(p, minCpu);
-	release(&(minCpu->lock));
+	cpuQueuePush(p, minProcCpuGet());
 #endif
 }
 
@@ -250,13 +242,7 @@ int fork(void) {
 	np->priority = 1;
 	queuePush(np, np->priority);
 #elif MC_FRR
-	acquire(&cpusLock);
-	struct cpu *minCpu = minProcCpuGet();
-	release(&cpusLock);
-
-	acquire(&(minCpu->lock));
-	cpuQueuePush(np, minCpu);
-	release(&(minCpu->lock));
+	cpuQueuePush(np, minProcCpuGet());
 #endif
 
 	safestrcpy(np->name, proc->name, sizeof(proc->name));
@@ -538,14 +524,12 @@ void scheduler(void) {
 				release(&(cpu->lock));
 			}
 		} else {
-			acquire(&(cpusLock));
 			struct cpu * newCpu;
 			for(newCpu = cpus; newCpu < &cpus[NCPU]; newCpu++) {
 				if(newCpu->numOfProcs > 0) {
 					break;
 				}
 			}
-			release(&(cpusLock));
 			if(newCpu != '\0') {
 				acquire(&(newCpu->lock));
 				p = cpuQueuePop(newCpu);
@@ -612,14 +596,14 @@ void yield(void) {
 	}
 	queuePush(proc, proc->priority);
 #elif MC_FRR
-	acquire(&(cpu->lock));
 	cpuQueuePush(proc, cpu);
+	acquire(&(cpu->lock));
 #endif
 	sched();
-#ifdef MC_FRR
-	release(&(cpu->lock));
-#else
+#ifndef MC_FRR
 	release(&ptable.lock);
+#else
+	release(&(cpu->lock));
 #endif
 }
 
@@ -718,13 +702,7 @@ static void wakeup1(void *chan) {
 			p->priority--;
 			queuePush(p, p->priority);
 #elif MC_FRR
-			acquire(&cpusLock);
-			struct cpu *minCpu = minProcCpuGet();
-			release(&cpusLock);
-
-			acquire(&(minCpu->lock));
-			cpuQueuePush(p, minCpu);
-			release(&(minCpu->lock));
+			cpuQueuePush(p, minProcCpuGet());
 #endif
 		}
 	}
@@ -761,13 +739,7 @@ int kill(int pid) {
 				p->priority--;
 				queuePush(p, p->priority);
 #elif MC_FRR
-				acquire(&cpusLock);
-				struct cpu *minCpu = minProcCpuGet();
-				release(&cpusLock);
-
-				acquire(&(minCpu->lock));
-				cpuQueuePush(p, minCpu);
-				release(&(minCpu->lock));
+				cpuQueuePush(p, minProcCpuGet());
 #endif
 			}
 
