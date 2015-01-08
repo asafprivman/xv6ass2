@@ -97,3 +97,9 @@ struct proc {
 //   original data and bss
 //   fixed-size stack
 //   expandable heap
+
+void 			queuePush(struct proc *p, int pr);
+struct proc* 	queuePop(int pr);
+void 			cpuQueuePush(struct proc *p, struct cpu *minCpu);
+struct proc* 	cpuQueuePop(struct cpu *c);
+struct cpu* 	minProcCpuGet(void);

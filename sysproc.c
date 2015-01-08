@@ -35,11 +35,12 @@ sys_get_sched_record(void)
 }
 
 int
-sys_getPriority(void)
-{
-   int *pid;
-   if((argptr(0,(void*) &pid,sizeof(&pid))) < 0) return -1;
-   return getPriority(pid);
+sys_set_priority(void){
+	int priority;
+	if(argint(0, &priority) < 0 )
+	    return -1;
+
+	return set_priority((uchar)priority);
 }
 
 int

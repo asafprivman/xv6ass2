@@ -114,13 +114,14 @@ void            sched(void);
 void            sleep(void*, struct spinlock*);
 void            userinit(void);
 int             wait(void);
-int             wait2(int*,int*,int*);
-int 			get_sched_record(int*, int*, int*);
 void            wakeup(void*);
 void            yield(void);
 // Assignment 2
+
 void            updateProc();
-int				getPriority(int*);
+int             wait2(int*,int*,int*);
+int 			get_sched_record(int*, int*, int*);
+int				set_priority(uchar);
 
 // swtch.S
 void            swtch(struct context**, struct context*);

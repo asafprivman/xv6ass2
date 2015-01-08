@@ -14,55 +14,6 @@ struct proc *procQueue[3][NPROC];
 int firstInQ[3] = { 0 };
 int lastInQ[3] = { 0 };
 
-//Priority 0 = High
-//Priority 1 = Medium
-//Priority 2 = Low
-void queuePush(struct proc *p, int pr) {
-	procQueue[pr][lastInQ[pr]] = p;
-	lastInQ[pr] = (lastInQ[pr] + 1) % NPROC;
-}
-
-struct proc* queuePop(int pr) {
-	struct proc *res;
-	res = procQueue[pr][firstInQ[pr]];
-	firstInQ[pr] = (firstInQ[pr] + 1) % NPROC;
-	return res;
-}
-
-void cpuQueuePush(struct proc *p, struct cpu *minCpu) {
-	acquire(&(minCpu->lock));
-	if (minCpu->numOfProcs != NPROC) {
-		minCpu->procQ[minCpu->lastInQ] = p;
-		minCpu->lastInQ = (minCpu->lastInQ + 1) % NPROC;
-		minCpu->numOfProcs++;
-	}
-	release(&(minCpu->lock));
-}
-
-struct proc* cpuQueuePop(struct cpu *c) {
-	if (c->numOfProcs != 0) {
-		struct proc *retProc;
-		retProc = c->procQ[c->firstInQ];
-		c->firstInQ = (c->firstInQ + 1) % NPROC;
-		c->numOfProcs--;
-		return retProc;
-	} else {
-		return 0;
-	}
-}
-
-struct cpu* minProcCpuGet(void) {
-	int minProcCpu = NPROC;
-	struct cpu *c, *minCpu;
-
-	for (c = cpus; c < cpus + ncpu; c++) {
-		if (c->numOfProcs < minProcCpu) {
-			minProcCpu = c->numOfProcs;
-			minCpu = c;
-		}
-	}
-	return minCpu;
-}
 
 struct {
 	struct spinlock lock;
@@ -384,16 +335,8 @@ int get_sched_record(int *s_tick, int *e_tick, int *cpu) {
 	return 0;
 }
 
-int getPriority(int* pid) {
-	struct proc *p;
-	acquire(&ptable.lock);
-	for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) { //scan table for pid
-		if (*pid == p->pid) {
-			release(&ptable.lock);
-			return p->priority;
-		}
-	}
-	release(&ptable.lock);
+int set_priority(uchar priority) {
+	proc->priority = priority;
 	return 0;
 }
 
@@ -779,5 +722,55 @@ void procdump(void) {
 		}
 		cprintf("\n");
 	}
+}
+
+//Priority 0 = High
+//Priority 1 = Medium
+//Priority 2 = Low
+void queuePush(struct proc *p, int pr) {
+	procQueue[pr][lastInQ[pr]] = p;
+	lastInQ[pr] = (lastInQ[pr] + 1) % NPROC;
+}
+
+struct proc* queuePop(int pr) {
+	struct proc *res;
+	res = procQueue[pr][firstInQ[pr]];
+	firstInQ[pr] = (firstInQ[pr] + 1) % NPROC;
+	return res;
+}
+
+void cpuQueuePush(struct proc *p, struct cpu *minCpu) {
+	acquire(&(minCpu->lock));
+	if (minCpu->numOfProcs != NPROC) {
+		minCpu->procQ[minCpu->lastInQ] = p;
+		minCpu->lastInQ = (minCpu->lastInQ + 1) % NPROC;
+		minCpu->numOfProcs++;
+	}
+	release(&(minCpu->lock));
+}
+
+struct proc* cpuQueuePop(struct cpu *c) {
+	if (c->numOfProcs != 0) {
+		struct proc *retProc;
+		retProc = c->procQ[c->firstInQ];
+		c->firstInQ = (c->firstInQ + 1) % NPROC;
+		c->numOfProcs--;
+		return retProc;
+	} else {
+		return 0;
+	}
+}
+
+struct cpu* minProcCpuGet(void) {
+	int minProcCpu = NPROC;
+	struct cpu *c, *minCpu;
+
+	for (c = cpus; c < cpus + ncpu; c++) {
+		if (c->numOfProcs < minProcCpu) {
+			minProcCpu = c->numOfProcs;
+			minCpu = c;
+		}
+	}
+	return minCpu;
 }
 

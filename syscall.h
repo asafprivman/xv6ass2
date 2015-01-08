@@ -23,5 +23,5 @@
 #define SYS_close  	21
 
 // Assignment 2
-#define SYS_wait2 		22
-#define SYS_getPriority 23
+#define SYS_wait2 		 22
+#define SYS_set_priority 23
