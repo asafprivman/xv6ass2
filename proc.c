@@ -14,7 +14,6 @@ struct proc *procQueue[3][NPROC];
 int firstInQ[3] = { 0 };
 int lastInQ[3] = { 0 };
 
-
 struct {
 	struct spinlock lock;
 	struct proc proc[NPROC];
@@ -397,16 +396,21 @@ void scheduler(void) {
 		}
 		else {
 			p = queuePop(2);
-			proc = p;
-			switchuvm(p);
-			p->state = RUNNING;
-			swtch(&cpu->scheduler, proc->context);
-			switchkvm();
+			if (p == 0) {
+				continue;
+			} else {
+				proc = p;
+				switchuvm(p);
+				p->state = RUNNING;
+				struct cpuProc info = {ticks,0,cpu->id};
+				p->schedulingInfo[p->timesScheduled % 1000] = &info;
+				swtch(&cpu->scheduler, proc->context);
+				switchkvm();
 
-			// Process is done running for now.
-			// It should have changed its p->state before coming back.
-			proc = 0;
-
+				// Process is done running for now.
+				// It should have changed its p->state before coming back.
+				proc = 0;
+			}
 		}
 #elif FCFS
 		if(firstInQ[2] == lastInQ[2]) {
@@ -415,14 +419,21 @@ void scheduler(void) {
 		}
 		else {
 			p = queuePop(2);
-			proc = p;
-			switchuvm(p);
-			p->state = RUNNING;
-			swtch(&cpu->scheduler, proc->context);
-			switchkvm();
-			// Process is done running for now.
-			// It should have changed its p->state before coming back.
-			proc = 0;
+			if (p == 0) {
+				continue;
+			} else {
+				proc = p;
+				switchuvm(p);
+				p->state = RUNNING;
+				struct cpuProc info = {ticks,0,cpu->id};
+				p->schedulingInfo[p->timesScheduled % 1000] = &info;
+				swtch(&cpu->scheduler, proc->context);
+				switchkvm();
+
+				// Process is done running for now.
+				// It should have changed its p->state before coming back.
+				proc = 0;
+			}
 		}
 #elif MLQ
 		if(firstInQ[0] != lastInQ[0]) {
@@ -433,15 +444,21 @@ void scheduler(void) {
 			p = queuePop(2);
 		}
 
-		proc = p;
-		switchuvm(p);
-		p->state = RUNNING;
-		swtch(&cpu->scheduler, proc->context);
-		switchkvm();
+		if (p == 0) {
+			continue;
+		} else {
+			proc = p;
+			switchuvm(p);
+			p->state = RUNNING;
+			struct cpuProc info = {ticks,0,cpu->id};
+			p->schedulingInfo[p->timesScheduled % 1000] = &info;
+			swtch(&cpu->scheduler, proc->context);
+			switchkvm();
 
-		// Process is done running for now.
-		// It should have changed its p->state before coming back.
-		proc = 0;
+			// Process is done running for now.
+			// It should have changed its p->state before coming back.
+			proc = 0;
+		}
 #endif
 		release(&ptable.lock);
 
@@ -735,8 +752,11 @@ void queuePush(struct proc *p, int pr) {
 struct proc* queuePop(int pr) {
 	struct proc *res;
 	res = procQueue[pr][firstInQ[pr]];
-	firstInQ[pr] = (firstInQ[pr] + 1) % NPROC;
-	return res;
+	if (res->state == RUNNABLE) {
+		firstInQ[pr] = (firstInQ[pr] + 1) % NPROC;
+		return res;
+	}
+	return 0;
 }
 
 void cpuQueuePush(struct proc *p, struct cpu *minCpu) {
