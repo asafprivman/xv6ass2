@@ -546,6 +546,9 @@ void yield(void) {
 	acquire(&ptable.lock); //DOC: yieldlock
 #endif
 	proc->state = RUNNABLE;
+	if (proc->schedulingInfo[proc->timesScheduled] != 0) {
+		proc->schedulingInfo[proc->timesScheduled++]->stopTime = ticks;
+	}
 #ifdef FRR
 	queuePush(proc, 2);
 #elif FCFS
@@ -614,6 +617,9 @@ void sleep(void *chan, struct spinlock *lk) {
 	// Go to sleep.
 	proc->chan = chan;
 	proc->state = SLEEPING;
+	if (proc->schedulingInfo[proc->timesScheduled] != 0) {
+		proc->schedulingInfo[proc->timesScheduled++]->stopTime = ticks;
+	}
 	proc->quanta = 0;
 
 #ifdef MC_FRR
@@ -652,6 +658,9 @@ static void wakeup1(void *chan) {
 	for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
 		if (p->state == SLEEPING && p->chan == chan) {
 			p->state = RUNNABLE;
+			if (p->schedulingInfo[proc->timesScheduled] != 0) {
+				p->schedulingInfo[proc->timesScheduled++]->stopTime = ticks;
+			}
 			p->quanta = 0;
 #ifdef FRR
 			queuePush(p, 2);
