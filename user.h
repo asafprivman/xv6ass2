@@ -6,6 +6,8 @@ struct stat;
 int wait2(int *, int *,int *);
 int get_sched_record(int *, int *,int *);
 int set_priority(uchar);
+void itoa(int n, char *s);
+char* strcat(char *dest, const char *src);
 // ***********
 
 int fork(void);

@@ -90,6 +90,7 @@ struct proc {
   int priority;
   struct cpuProc* schedulingInfo[1000];
   int timesScheduled;
+  int timesInfoShowed;
 };
 
 // Process memory is laid out contiguously, low addresses first:

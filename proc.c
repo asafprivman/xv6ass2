@@ -331,7 +331,17 @@ int wait2(int* wtime, int* rtime, int* iotime) {
 }
 
 int get_sched_record(int *s_tick, int *e_tick, int *cpu) {
-	return 0;
+	if (proc->timesInfoShowed <= proc->timesScheduled) {
+		struct cpuProc *info =
+				proc->schedulingInfo[proc->timesInfoShowed % 1000];
+		proc->timesInfoShowed = (proc->timesInfoShowed + 1) % 1000;
+		*s_tick = info->schedTime;
+		*e_tick = info->stopTime;
+		*cpu = info->cpuId;
+	} else {
+		yield();
+	}
+	return proc->timesInfoShowed;
 }
 
 int set_priority(uchar priority) {
@@ -467,34 +477,32 @@ void scheduler(void) {
 		p = cpuQueuePop(cpu);
 		release(&(cpu->lock));
 		if(p != 0) {
-			if(p->state == RUNNABLE) {
-				acquire(&(cpu->lock));
-				proc = p;
-				switchuvm(p);
-				p->state = RUNNING;
-				struct cpuProc info = {ticks,0,cpu->id};
-				p->schedulingInfo[p->timesScheduled++] = &info;
-				p->quanta = 0;
-				swtch(&cpu->scheduler, proc->context);
-				switchkvm();
+			acquire(&(cpu->lock));
+			proc = p;
+			switchuvm(p);
+			p->state = RUNNING;
+			struct cpuProc info = {ticks,0,cpu->id};
+			p->schedulingInfo[p->timesScheduled++] = &info;
+			p->quanta = 0;
+			swtch(&cpu->scheduler, proc->context);
+			switchkvm();
 
-				// Process is done running for now.
-				// It should have changed its p->state before coming back.
-				proc = 0;
-				release(&(cpu->lock));
-			}
+			// Process is done running for now.
+			// It should have changed its p->state before coming back.
+			proc = 0;
+			release(&(cpu->lock));
 		} else {
-			struct cpu * newCpu;
-			for(newCpu = cpus; newCpu < &cpus[NCPU]; newCpu++) {
+			struct cpu * newCpu = 0;
+			for(newCpu = cpus; newCpu < cpus + ncpu; newCpu++) {
 				if(newCpu->numOfProcs > 0) {
 					break;
 				}
 			}
-			if(newCpu != '\0') {
+			if(newCpu != 0) {
 				acquire(&(newCpu->lock));
 				p = cpuQueuePop(newCpu);
 				release(&(newCpu->lock));
-				if(p != '\0') {
+				if(p != 0) {
 					acquire(&(cpu->lock));
 					proc = p;
 					switchuvm(p);
@@ -547,7 +555,8 @@ void yield(void) {
 #endif
 	proc->state = RUNNABLE;
 	if (proc->schedulingInfo[proc->timesScheduled] != 0) {
-		proc->schedulingInfo[proc->timesScheduled++]->stopTime = ticks;
+		proc->schedulingInfo[proc->timesScheduled % 1000]->stopTime = ticks;
+		proc->timesScheduled = (proc->timesScheduled + 1) % 1000;
 	}
 #ifdef FRR
 	queuePush(proc, 2);
@@ -619,6 +628,7 @@ void sleep(void *chan, struct spinlock *lk) {
 	proc->state = SLEEPING;
 	if (proc->schedulingInfo[proc->timesScheduled] != 0) {
 		proc->schedulingInfo[proc->timesScheduled++]->stopTime = ticks;
+		proc->timesScheduled = (proc->timesScheduled + 1) % 1000;
 	}
 	proc->quanta = 0;
 
@@ -658,9 +668,6 @@ static void wakeup1(void *chan) {
 	for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
 		if (p->state == SLEEPING && p->chan == chan) {
 			p->state = RUNNABLE;
-			if (p->schedulingInfo[proc->timesScheduled] != 0) {
-				p->schedulingInfo[proc->timesScheduled++]->stopTime = ticks;
-			}
 			p->quanta = 0;
 #ifdef FRR
 			queuePush(p, 2);
@@ -782,12 +789,14 @@ struct proc* cpuQueuePop(struct cpu *c) {
 	if (c->numOfProcs != 0) {
 		struct proc *retProc;
 		retProc = c->procQ[c->firstInQ];
-		c->firstInQ = (c->firstInQ + 1) % NPROC;
-		c->numOfProcs--;
-		return retProc;
-	} else {
-		return 0;
+		if (retProc->state == RUNNABLE) {
+			c->procQ[c->firstInQ] = 0;
+			c->firstInQ = (c->firstInQ + 1) % NPROC;
+			c->numOfProcs--;
+			return retProc;
+		}
 	}
+	return 0;
 }
 
 struct cpu* minProcCpuGet(void) {
