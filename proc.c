@@ -345,7 +345,14 @@ int get_sched_record(int *s_tick, int *e_tick, int *cpu) {
 }
 
 int set_priority(uchar priority) {
+	acquire(&ptable.lock);
 	proc->priority = priority;
+	release(&ptable.lock);
+
+#ifdef MLQ
+	if (proc->priority == 2)
+		yield();
+#endif
 	return 0;
 }
 
@@ -563,9 +570,6 @@ void yield(void) {
 #elif FCFS
 	queuePush(proc, 2);
 #elif MLQ
-	if( (proc->quanta % QUANTA == 0) && (proc-> priority != 2)) {
-		proc->priority++;
-	}
 	queuePush(proc, proc->priority);
 #elif MC_FRR
 	cpuQueuePush(proc, cpu);
@@ -674,8 +678,6 @@ static void wakeup1(void *chan) {
 #elif FCFS
 			queuePush(p, 2);
 #elif MLQ
-			if(p->priority != 0)
-			p->priority--;
 			queuePush(p, p->priority);
 #elif MC_FRR
 			cpuQueuePush(p, minProcCpuGet());
@@ -776,13 +778,13 @@ struct proc* queuePop(int pr) {
 }
 
 void cpuQueuePush(struct proc *p, struct cpu *minCpu) {
-	acquire(&(minCpu->lock));
+	//acquire(&(minCpu->lock));
 	if (minCpu->numOfProcs != NPROC) {
 		minCpu->procQ[minCpu->lastInQ] = p;
 		minCpu->lastInQ = (minCpu->lastInQ + 1) % NPROC;
 		minCpu->numOfProcs++;
 	}
-	release(&(minCpu->lock));
+	//release(&(minCpu->lock));
 }
 
 struct proc* cpuQueuePop(struct cpu *c) {

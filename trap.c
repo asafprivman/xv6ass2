@@ -106,7 +106,7 @@ void trap(struct trapframe *tf) {
 		else
 		shouldYield = 0;
 #elif MLQ
-		if(proc->priority == 3)
+		if(proc->priority == 2)
 		shouldYield = 0;
 		else {
 			if (proc->quanta % QUANTA == 0)
