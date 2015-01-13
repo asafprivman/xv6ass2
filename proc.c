@@ -713,8 +713,6 @@ int kill(int pid) {
 #elif FCFS
 				queuePush(p, 2);
 #elif MLQ
-				if(p->priority != 0)
-				p->priority--;
 				queuePush(p, p->priority);
 #elif MC_FRR
 				cpuQueuePush(p, minProcCpuGet());
@@ -778,13 +776,11 @@ struct proc* queuePop(int pr) {
 }
 
 void cpuQueuePush(struct proc *p, struct cpu *minCpu) {
-	//acquire(&(minCpu->lock));
 	if (minCpu->numOfProcs != NPROC) {
 		minCpu->procQ[minCpu->lastInQ] = p;
 		minCpu->lastInQ = (minCpu->lastInQ + 1) % NPROC;
 		minCpu->numOfProcs++;
 	}
-	//release(&(minCpu->lock));
 }
 
 struct proc* cpuQueuePop(struct cpu *c) {
